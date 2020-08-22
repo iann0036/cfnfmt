@@ -1,6 +1,6 @@
 {
   "name": "cfnfmt",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "CloudFormation template style formatter",
   "main": "index.js",
   "scripts": {

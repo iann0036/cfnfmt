@@ -20,7 +20,7 @@ Basic usage:
 cfnfmt template.yml other-template.yaml
 ```
 
-You can also lint all templates in a whole directory:
+You can also format all templates in a whole directory:
 
 ```
 cfnfmt .
@@ -28,7 +28,7 @@ cfnfmt .
 
 ## Configuration
 
-cfnfmt uses a set of rules to allow you to customize your template styling preference. Each rule is independent from the others, and can be enabled, disabled or changes. All these settings can be gathered in a configuration file.
+cfnfmt uses a set of rules to allow you to customize your template styling preference. Each rule is independent from the others, and can be enabled, disabled or changed. All these settings can be gathered in a configuration file.
 
 To use a custom configuration file, use the `-c` option:
 
@@ -76,7 +76,7 @@ If set to `true`, the template is checked for the presence of the `AWSTemplateFo
 
 #### key-indent-level
 
-An integer representing the number of spaces to indent map/object keys at. Lists / sequences are not affected by this setting.
+An integer representing the number of spaces to indent map/object keys at. Lists/sequences are not affected by this setting.
 
 #### section-order
 
