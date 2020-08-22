@@ -2,31 +2,71 @@ const fs = require('fs');
 const YAML = require('yaml');
 const parseCST = require('yaml/parse-cst');
 
-// CONFIG
-var DESIRED_L1_ORDER = [
-    "AWSTemplateFormatVersion",
-    "Description",
-    "Metadata",
-    "Parameters",
-    "Mappings",
-    "Conditions",
-    "Transform",
-    "Resources",
-    "Outputs",
-];
-var DESIRED_L2_RESOURCES_ORDER = [
-    "DependsOn",
-    "Type",
-    "Metadata",
-    "Properties",
-];
-var DESIRED_INDENTATION = 2;
-//
+class ConfigLoader {
+    config = { // default config
+        "template-filenames": [
+            "*.yaml",
+            "*.yml",
+            "*.template"
+        ],
+        "rules": {
+            "aws-template-format-version": true,
+            "key-indent-level": 2,
+            "section-order": [
+                "AWSTemplateFormatVersion",
+                "Description",
+                "Metadata",
+                "Parameters",
+                "Mappings",
+                "Conditions",
+                "Transform",
+                "Resources",
+                "Outputs"
+            ],
+            "resource-key-order": [
+                "DependsOn",
+                "Type",
+                "Metadata",
+                "Properties"
+            ]
+        }
+    };
+
+    constructor(config_filename) {
+        if (config_filename) {
+            var file_config = YAML.parse(fs.readFileSync(config_filename, 'utf8'));
+            if (file_config["template-filenames"]) {
+                this.config["template-filenames"] = file_config["template-filenames"];
+            }
+            if (file_config["rules"]) {
+                Object.assign(this.config.rules, file_config["rules"]);
+            }
+        }
+    }
+
+    get templateFilenames() {
+        return this.config["template-filenames"];
+    }
+
+    get awsTemplateFormatVersion() {
+        return this.config.rules["aws-template-format-version"];
+    }
+
+    get keyIndentLevel() {
+        return this.config.rules["key-indent-level"];
+    }
+
+    get sectionOrder() {
+        return this.config.rules["section-order"];
+    }
+}
 
 class TemplateTransformer {
-    constructor(args) {
-        this.args = args;
-        this.file_contents = fs.readFileSync(args.filename, 'utf8');
+    constructor(filename, config, debug) {
+        this.filename = filename;
+        this.debug = debug;
+        this.config = config;
+        this.file_contents = fs.readFileSync(filename, 'utf8');
         this.template = this.file_contents;
         this.cst = parseCST(this.template);
         this.cst.setOrigRanges();
@@ -43,8 +83,20 @@ class TemplateTransformer {
         }
     }
 
+    processConfig() {
+        if (this.config.awsTemplateFormatVersion) {
+            this.ensureAWSTemplateFormatVersionPresent();
+        }
+        if (this.config.sectionOrder) {
+            this.setSectionOrder();
+        }
+        if (this.config.keyIndentLevel) {
+            this.setKeyIndentLevel();
+        }
+    }
+
     _debugLog() {
-        if (this.args.debug) {
+        if (this.debug) {
             console.log.apply(console, arguments);
         }
     }
@@ -77,21 +129,21 @@ class TemplateTransformer {
         return l1_indices;
     }
 
-    orderL1() {
+    setSectionOrder() {
         var l1_indices = this._getL1Incides(this.primary_map);
         var l1_keys = Object.keys(l1_indices);
     
-        for (var i=0; i<DESIRED_L1_ORDER.length; i++) { // remove not-found keys from DESIRED_L1_ORDER
-            if (!l1_keys.includes(DESIRED_L1_ORDER[i])) {
-                DESIRED_L1_ORDER.splice(i, 1);
+        for (var i=0; i<this.config.sectionOrder.length; i++) { // remove not-found keys from this.config.sectionOrder
+            if (!l1_keys.includes(this.config.sectionOrder[i])) {
+                this.config.sectionOrder.splice(i, 1);
             }
         }
     
         var slice_start = 0;
-        var previous_index = l1_indices[DESIRED_L1_ORDER.shift()];
+        var previous_index = l1_indices[this.config.sectionOrder.shift()];
     
-        while (DESIRED_L1_ORDER.length) {
-            var desired_order_item = DESIRED_L1_ORDER.shift();
+        while (this.config.sectionOrder.length) {
+            var desired_order_item = this.config.sectionOrder.shift();
     
             this._debugLog("Desired Order Item:");
             this._debugLog(desired_order_item);
@@ -138,7 +190,7 @@ class TemplateTransformer {
         if (node && node.items) {
             for (var i=0; i<node.items.length; i++) {
                 if (node.items[i].context) {
-                    if (node.items[i].context.indent /* has an indent */ && node.items[i].type == "MAP_VALUE" && node.items[i-1].type == "PLAIN" && parent /* isn't top level */ && (node.items[i].context.indent - parent.items[parent_item_index].context.indent) != DESIRED_INDENTATION && parent.items[parent_item_index].type == "MAP_VALUE") {
+                    if (node.items[i].context.indent /* has an indent */ && node.items[i].type == "MAP_VALUE" && node.items[i-1].type == "PLAIN" && parent /* isn't top level */ && (node.items[i].context.indent - parent.items[parent_item_index].context.indent) != this.config.keyIndentLevel && parent.items[parent_item_index].type == "MAP_VALUE") {
                         var start_of_key = node.items[i-1].range.start;
                         var calculated_indentation = node.items[i].context.indent - parent.items[parent_item_index].context.indent;
     
@@ -152,10 +204,10 @@ class TemplateTransformer {
                         var parent_raw_value = this.template.slice(parent.items[parent_item_index].range.start, parent.items[parent_item_index].range.end);
                         //parent_raw_value = parent.items[parent_item_index].rawValue;
                         
-                        if (calculated_indentation > DESIRED_INDENTATION) {
-                            parent.items[parent_item_index].value = parent_raw_value.replace(new RegExp('\\n {' + (calculated_indentation - DESIRED_INDENTATION) + '}', 'g'), `\n`);
+                        if (calculated_indentation > this.config.keyIndentLevel) {
+                            parent.items[parent_item_index].value = parent_raw_value.replace(new RegExp('\\n {' + (calculated_indentation - this.config.keyIndentLevel) + '}', 'g'), `\n`);
                         } else {
-                            parent.items[parent_item_index].value = parent_raw_value.replace(/\n/g, `\n` + ' '.repeat(DESIRED_INDENTATION - calculated_indentation));
+                            parent.items[parent_item_index].value = parent_raw_value.replace(/\n/g, `\n` + ' '.repeat(this.config.keyIndentLevel - calculated_indentation));
                         }
     
                         this._debugLog("Updated Value:");
@@ -175,7 +227,7 @@ class TemplateTransformer {
         return false;
     }
 
-    setSpacing() {
+    setKeyIndentLevel() {
         var spacing_iterations = 0; // safety
         while (this._walkNode(this.primary_map, null, -1) && spacing_iterations < 1000) {
             this._resetParser(); // TODO: more elegant way of applying pending changes
@@ -206,15 +258,16 @@ class TemplateTransformer {
 
     outputToFile() {
         var output = String(this.cst);
-        fs.writeFileSync(this.args.filename, output);
+        fs.writeFileSync(this.filename, output);
     }
 }
 
 module.exports = (args) => {
-    template_transformer = new TemplateTransformer(args);
-    template_transformer.ensureAWSTemplateFormatVersionPresent();
-    template_transformer.orderL1();
-    template_transformer.setSpacing();
+    var config = new ConfigLoader(args.config);
+    var template_transformer = new TemplateTransformer(args.path[0], config, args.debug);
+
+    template_transformer.processConfig();
+
     if (args.outputToStdout) {
         template_transformer.outputToStdout();
     } else {

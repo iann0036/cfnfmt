@@ -66,6 +66,12 @@ rules:
   - "Outputs"
 ```
 
+When specifying configuration with the `-c` option, the default configuration values are used for any values not explicitly defined.
+
+### Template Filenames
+
+You may set the matchable filenames using the `template-filenames` property within the configuration file. This property will only be considered if the input path is a directory.
+
 ### Rules
 
 The following settings can be set in the `rules` section of the configuration file:
@@ -76,8 +82,8 @@ If set to `true`, the template is checked for the presence of the `AWSTemplateFo
 
 #### key-indent-level
 
-An integer representing the number of spaces to indent map/object keys at. Lists/sequences are not affected by this setting.
+An integer representing the number of spaces to indent map/object keys at. Lists/sequences are not affected by this setting. Set to `false` to ignore key indenting.
 
 #### section-order
 
-A list of sections in the order it should be rearranged to. Not all defined sections have to be defined in the template. Any sections not defined by this list will retain their existing order.
+A list of sections in the order it should be rearranged to. Not all defined sections have to be defined in the template. Any sections not defined by this list will retain their existing order. Set to `false` to retain existing order.
