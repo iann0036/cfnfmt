@@ -70,7 +70,7 @@ When specifying configuration with the `-c` option, the default configuration va
 
 ### Template Filenames
 
-You may set the matchable filenames using the `template-filenames` property within the configuration file. This property will only be considered if the input path is a directory.
+You may set the matchable filenames using the `template-filenames` property within the configuration file. This property will only be considered if the input path is a directory. Files that do not contain a `Resources` key will be skipped.
 
 ### Rules
 

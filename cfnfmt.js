@@ -1,6 +1,7 @@
 const fs = require('fs');
 const YAML = require('yaml');
 const parseCST = require('yaml/parse-cst');
+const glob = require('glob');
 
 class ConfigLoader {
     config = { // default config
@@ -33,8 +34,24 @@ class ConfigLoader {
     };
 
     constructor(config_filename) {
+        var use_filename = null;
+
         if (config_filename) {
-            var file_config = YAML.parse(fs.readFileSync(config_filename, 'utf8'));
+            use_filename = config_filename;
+        } else if (fs.existsSync('./.cfnfmt')) {
+            use_filename = './.cfnfmt';
+        } else if (fs.existsSync('./.cfnfmt.yaml')) {
+            use_filename = './.cfnfmt.yaml';
+        } else if (fs.existsSync('./.cfnfmt.yml')) {
+            use_filename = './.cfnfmt.yml';
+        } else if (process.env.CFNFMT_CONFIG_FILE && fs.existsSync(process.env.CFNFMT_CONFIG_FILE)) {
+            use_filename = process.env.CFNFMT_CONFIG_FILE;
+        } else if (fs.existsSync('~/.config/cfnfmt/config')) {
+            use_filename = '~/.config/cfnfmt/config';
+        }
+
+        if (use_filename) {
+            var file_config = YAML.parse(fs.readFileSync(use_filename, 'utf8'));
             if (file_config["template-filenames"]) {
                 this.config["template-filenames"] = file_config["template-filenames"];
             }
@@ -81,9 +98,17 @@ class TemplateTransformer {
                 this.primary_map_index = i;
             }
         }
+
+        this.disallowProcessing = false;
+        if (!Object.keys(this._getL1Incides(this.primary_map)).includes("Resources")) {
+            this.disallowProcessing = true;
+        }
     }
 
     processConfig() {
+        if (this.disallowProcessing) {
+            return
+        }
         if (this.config.awsTemplateFormatVersion) {
             this.ensureAWSTemplateFormatVersionPresent();
         }
@@ -130,6 +155,9 @@ class TemplateTransformer {
     }
 
     setSectionOrder() {
+        if (this.disallowProcessing) {
+            return
+        }
         var l1_indices = this._getL1Incides(this.primary_map);
         var l1_keys = Object.keys(l1_indices);
     
@@ -228,6 +256,9 @@ class TemplateTransformer {
     }
 
     setKeyIndentLevel() {
+        if (this.disallowProcessing) {
+            return
+        }
         var spacing_iterations = 0; // safety
         while (this._walkNode(this.primary_map, null, -1) && spacing_iterations < 1000) {
             this._resetParser(); // TODO: more elegant way of applying pending changes
@@ -237,6 +268,9 @@ class TemplateTransformer {
     }
 
     ensureAWSTemplateFormatVersionPresent() {
+        if (this.disallowProcessing) {
+            return
+        }
         var l1_indices = this._getL1Incides(this.primary_map);
         if (Object.keys(l1_indices).includes("AWSTemplateFormatVersion")) {
             return;
@@ -252,11 +286,17 @@ class TemplateTransformer {
     }
 
     outputToStdout() {
+        if (this.disallowProcessing) {
+            return
+        }
         var output = String(this.cst);
         console.log(output);
     }
 
     outputToFile() {
+        if (this.disallowProcessing) {
+            return
+        }
         var output = String(this.cst);
         fs.writeFileSync(this.filename, output);
     }
@@ -264,13 +304,31 @@ class TemplateTransformer {
 
 module.exports = (args) => {
     var config = new ConfigLoader(args.config);
-    var template_transformer = new TemplateTransformer(args.path[0], config, args.debug);
 
-    template_transformer.processConfig();
+    var process_files = [];
 
-    if (args.outputToStdout) {
-        template_transformer.outputToStdout();
-    } else {
-        template_transformer.outputToFile();
+    for (var pathitem of args.path) {
+        var stat = fs.lstatSync(pathitem);
+        if (stat.isFile()) {
+            process_files.push(pathitem);
+        } else if (stat.isDirectory()) {
+            for (var templateFilenameFilter of config.templateFilenames) {
+                process_files = process_files.concat(glob.sync(templateFilenameFilter, { cwd: pathitem }));
+            }
+        } else {
+            throw "Cannot handle filetype";
+        }
+    }
+
+    for (var filepath of process_files) {
+        var template_transformer = new TemplateTransformer(filepath, config, args.debug);
+
+        template_transformer.processConfig();
+
+        if (args.outputToStdout) {
+            template_transformer.outputToStdout();
+        } else {
+            template_transformer.outputToFile();
+        }
     }
 };
