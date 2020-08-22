@@ -22,6 +22,7 @@
   },
   "homepage": "https://github.com/iann0036/cfnfmt#readme",
   "dependencies": {
+    "commander": "^6.0.0",
     "yaml": "^1.10.0"
   }
 }
