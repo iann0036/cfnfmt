@@ -66,15 +66,15 @@ rules:
   - "Resources"
   - "Outputs"
   resource-key-order:
-  - DependsOn
-  - Condition
-  - CreationPolicy
-  - UpdatePolicy
-  - UpdateReplacePolicy
-  - DeletionPolicy
-  - Type
-  - Metadata
-  - Properties
+  - "DependsOn"
+  - "Condition"
+  - "CreationPolicy"
+  - "UpdatePolicy"
+  - "UpdateReplacePolicy"
+  - "DeletionPolicy"
+  - "Type"
+  - "Metadata"
+  - "Properties"
 ```
 
 When specifying configuration with the `-c` option, the default configuration values are used for any values not explicitly defined.
