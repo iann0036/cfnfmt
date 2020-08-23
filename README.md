@@ -54,6 +54,7 @@ template-filenames:
 rules:
   aws-template-format-version: true
   key-indent-level: 2
+  list-indent-level: 0
   section-order:
   - "AWSTemplateFormatVersion"
   - "Description"
@@ -82,7 +83,11 @@ If set to `true`, the template is checked for the presence of the `AWSTemplateFo
 
 #### key-indent-level
 
-An integer representing the number of spaces to indent map/object keys at. Lists/sequences are not affected by this setting. Set to `false` to ignore key indenting.
+An integer representing the number of spaces to indent map/object keys at, relative to its parent key. Lists/sequences are not affected by this setting. Set to `false` to ignore key indenting.
+
+#### list-indent-level
+
+An integer representing the number of spaces to indent list/sequence items at, relative to its parent key. Set to `false` to ignore list indenting.
 
 #### section-order
 

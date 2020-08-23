@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 const cfnfmt = require('./cfnfmt');
 const { program } = require('commander');
 const pjson = require('./package.json');

@@ -106,3 +106,4 @@ dist
 # Custom
 *.yml
 *.yaml
+.cfnfmt
