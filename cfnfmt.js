@@ -13,7 +13,8 @@ class ConfigLoader {
         "rules": {
             "aws-template-format-version": true,
             "key-indent-level": 2,
-            "list-indent-level": 2,
+            //"list-indent-level": 0,
+            "list-indent-level": false,
             "section-order": [
                 "AWSTemplateFormatVersion",
                 "Description",
@@ -228,8 +229,8 @@ class TemplateTransformer {
     
         this._debugLog(this.primary_map.items);
     
-        //cst[cst.length-1].contents = [...cst[cst.length-1].contents, ...cst[cst.length-1].contents[primary_map_index].items]; // flatten collection
-        //delete cst[cst.length-1].contents[primary_map_index];
+        this.cst[this.cst.length-1].contents = [...this.cst[this.cst.length-1].contents, ...this.cst[this.cst.length-1].contents[this.primary_map_index].items]; // flatten collection
+        delete this.cst[this.cst.length-1].contents[this.primary_map_index];
     
         this._resetParser();
     }

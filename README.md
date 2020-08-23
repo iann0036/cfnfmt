@@ -65,6 +65,16 @@ rules:
   - "Transform"
   - "Resources"
   - "Outputs"
+  resource-key-order:
+  - DependsOn
+  - Condition
+  - CreationPolicy
+  - UpdatePolicy
+  - UpdateReplacePolicy
+  - DeletionPolicy
+  - Type
+  - Metadata
+  - Properties
 ```
 
 When specifying configuration with the `-c` option, the default configuration values are used for any values not explicitly defined.
@@ -85,10 +95,14 @@ If set to `true`, the template is checked for the presence of the `AWSTemplateFo
 
 An integer representing the number of spaces to indent map/object keys at, relative to its parent key. Lists/sequences are not affected by this setting. Set to `false` to ignore key indenting.
 
-#### list-indent-level
+#### list-indent-level [CURRENTLY DISABLED - UNSTABLE]
 
 An integer representing the number of spaces to indent list/sequence items at, relative to its parent key. Set to `false` to ignore list indenting.
 
 #### section-order
 
 A list of sections in the order it should be rearranged to. Not all defined sections have to be defined in the template. Any sections not defined by this list will retain their existing order. Set to `false` to retain existing order.
+
+#### resource-key-order [CURRENTLY DISABLED - UNSTABLE]
+
+A list of keys in the order they should be rearranged to within resources. Not all defined keys have to be defined in the resource. Any keys not defined by this list will retain their existing order. Set to `false` to retain existing order.
