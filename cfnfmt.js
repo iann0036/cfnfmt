@@ -13,8 +13,7 @@ class ConfigLoader {
         "rules": {
             "aws-template-format-version": true,
             "key-indent-level": 2,
-            //"list-indent-level": 0,
-            "list-indent-level": false,
+            "list-indent-level": 0,
             "section-order": [
                 "AWSTemplateFormatVersion",
                 "Description",
@@ -26,7 +25,7 @@ class ConfigLoader {
                 "Resources",
                 "Outputs"
             ],
-            /*"resource-key-order": [
+            "resource-key-order": [
                 "DependsOn",
                 "Condition",
                 "CreationPolicy",
@@ -36,8 +35,7 @@ class ConfigLoader {
                 "Type",
                 "Metadata",
                 "Properties"
-            ],*/
-            "resource-key-order": false
+            ]
         }
     };
 
@@ -100,6 +98,10 @@ class TemplateTransformer {
         this.debug = debug;
         this.config = config;
         this.file_contents = fs.readFileSync(filename, 'utf8');
+
+        var has_nonascii = this.file_contents.match(/[^\x00-\x7F]/g);
+        this.file_contents = this.file_contents.replace(/[^\x00-\x7F]/g, "");
+
         this.template = this.file_contents;
         this.cst = parseCST(this.template);
         this.cst.setOrigRanges();
@@ -116,8 +118,11 @@ class TemplateTransformer {
         }
 
         this.disallowProcessing = false;
+        this._debugLog(this._getTopLevelIncides(this.primary_map));
         if (!Object.keys(this._getTopLevelIncides(this.primary_map)).includes("Resources")) {
             this.disallowProcessing = true;
+        } else if (has_nonascii) {
+            console.log(`WARNING: The file '${filename}' had non-ascii characters which were removed before processing!`);
         }
     }
 
@@ -134,7 +139,7 @@ class TemplateTransformer {
         if (this.config.resourceKeyOrder) {
             this.setResourceKeyOrder();
         }
-        if (!isNaN(this.config.keyIndentLevel) || !isNaN(this.config.listIndentLevel)) {
+        if (Number.isInteger(this.config.keyIndentLevel) || Number.isInteger(this.config.listIndentLevel)) {
             this.setIndentLevel();
         }
     }
@@ -165,9 +170,24 @@ class TemplateTransformer {
 
     _getTopLevelIncides(node) {
         var l1_indices = {};
+        var next_available_start = 0;
+
         for (var i=0; i<node.items.length; i++) {
-            if (typeof node.items[i].rawValue == "string" && node.items[i].type == "PLAIN" && node.items[i+1] && node.items[i+1].type == "MAP_VALUE") {
-                l1_indices[node.items[i].rawValue.trim()] = i;
+            if (typeof node.items[i].rawValue == "string" && node.items[i].type == "PLAIN") {
+                for (var j=i+1; j<node.items.length; j++) {
+                    if (node.items[j] && node.items[j].type == "MAP_VALUE") {
+                        l1_indices[node.items[i].rawValue.trim()] = {
+                            "startIndex": next_available_start,
+                            "keyIndex": i,
+                            "endIndex": j
+                        };
+                        next_available_start = j+1;
+                        break;
+                    }
+                    if (node.items[j] && !["COMMENT", "BLANK_LINE"].includes(node.items[j].type)) {
+                        break;
+                    }
+                }
             }
         }
         return l1_indices;
@@ -187,50 +207,41 @@ class TemplateTransformer {
                 i -= 1;
             }
         }
-    
-        var slice_start = 0;
-        var previous_index = l1_indices[section_order.shift()];
+
+        var previous_item = section_order.shift();
     
         while (section_order.length) {
             var desired_order_item = section_order.shift();
     
             this._debugLog("Desired Order Item:");
             this._debugLog(desired_order_item);
-    
-            var current_index = l1_indices[desired_order_item];
-            this._debugLog("Current Index:");
-            this._debugLog(current_index);
-    
-            slice_start = 0;
-            for (var index of Object.values(l1_indices)) {
-                if (index < current_index && index >= slice_start) {
-                    slice_start = index + 2;
-                }
-            }
             
-            if (slice_start != previous_index + 2) { // Skip if already in order
-                var slice = this.primary_map.items.splice(slice_start, current_index - slice_start + 2);
-                var insert_at = previous_index + 2;
-                if (slice_start < previous_index) {
-                    insert_at = previous_index + 2 - slice.length;
-                }
-                this._debugLog("At " + slice_start + ", we removed " + slice.length + " items and are re-inserting at " + insert_at);
+            this._debugLog("Current Index:");
+            this._debugLog(l1_indices[desired_order_item]);
+
+            this._debugLog("Previous Index:");
+            this._debugLog(l1_indices[previous_item]);
+            
+            if (l1_indices[desired_order_item].startIndex != l1_indices[previous_item].endIndex + 1) { // Skip if already in order
+                var slice = this.primary_map.items.splice(l1_indices[desired_order_item].startIndex, l1_indices[desired_order_item].endIndex - l1_indices[desired_order_item].startIndex + 1);
+                l1_indices = this._getTopLevelIncides(this.primary_map); // reload indices
+
+                var insert_at = l1_indices[previous_item].endIndex + 1;
+
                 this.primary_map.items.splice(insert_at, 0, ...slice);
     
                 // reload indices
                 l1_indices = this._getTopLevelIncides(this.primary_map);
-    
-                // set new location of current index
-                current_index = l1_indices[desired_order_item];
+                this._debugLog(l1_indices);
+            } else {
+                this._debugLog("Skipping, already in order");
             }
     
-            previous_index = current_index;
+            previous_item = desired_order_item;
         }
     
-        this._debugLog(this.primary_map.items);
-    
-        this.cst[this.cst.length-1].contents = [...this.cst[this.cst.length-1].contents, ...this.cst[this.cst.length-1].contents[this.primary_map_index].items]; // flatten collection
-        delete this.cst[this.cst.length-1].contents[this.primary_map_index];
+        //this.cst[this.cst.length-1].contents = [...this.cst[this.cst.length-1].contents, ...this.cst[this.cst.length-1].contents[this.primary_map_index].items]; // flatten collection
+        //delete this.cst[this.cst.length-1].contents[this.primary_map_index];
     
         this._resetParser();
     }
@@ -244,16 +255,13 @@ class TemplateTransformer {
             return;
         }
 
-        var resources_node = this.primary_map.items[l1_indices['Resources'] + 1].node;
+        var resources_node = this.primary_map.items[l1_indices['Resources'].endIndex].node;
         var resource_indices = this._getTopLevelIncides(resources_node);
 
         for (var resource of Object.keys(resource_indices)) {
-            var resource_prop_node = resources_node.items[resource_indices[resource] + 1].node;
+            var resource_prop_node = resources_node.items[resource_indices[resource].endIndex].node;
             var resource_prop_indices = this._getTopLevelIncides(resource_prop_node);
             var resource_prop_keys = Object.keys(resource_prop_indices);
-        
-            this._debugLog("Resource Prop Indices:");
-            this._debugLog(resource_prop_indices);
 
             var resource_key_order = this.config.resourceKeyOrder.slice(); // make a copy
         
@@ -263,53 +271,24 @@ class TemplateTransformer {
                     i -= 1;
                 }
             }
-        
-            var slice_start = 0;
-            var previous_index = resource_prop_indices[resource_key_order.shift()];
+
+            var previous_item = resource_key_order.shift();
         
             while (resource_key_order.length) {
                 var desired_order_item = resource_key_order.shift();
-
-                /*this._debugLog("Previous Index:");
-                this._debugLog(previous_index);
-        
-                this._debugLog("Desired Order Item:");
-                this._debugLog(desired_order_item);*/
-        
-                var current_index = resource_prop_indices[desired_order_item];
-                /*this._debugLog("Current Index:");
-                this._debugLog(current_index);*/
-        
-                slice_start = 0;
-                for (var index of Object.values(resource_prop_indices)) {
-                    if (index < current_index && index >= slice_start) {
-                        slice_start = index + 2;
-                    }
-                }
                 
-                if (slice_start != previous_index + 2) { // Skip if already in order
-                    var slice = resource_prop_node.items.splice(slice_start, current_index - slice_start + 2);
-                    var insert_at = previous_index + 2;
-                    if (slice_start < previous_index) {
-                        insert_at = previous_index + 2 - slice.length;
-                    }
-                    this._debugLog("At " + slice_start + ", we removed " + slice.length + " items and are re-inserting at " + insert_at);
+                if (resource_prop_indices[desired_order_item].startIndex != resource_prop_indices[previous_item].endIndex + 1) { // Skip if already in order
+                    var slice = resource_prop_node.items.splice(resource_prop_indices[desired_order_item].startIndex, resource_prop_indices[desired_order_item].endIndex - resource_prop_indices[desired_order_item].startIndex + 1);
+                    resource_prop_indices = this._getTopLevelIncides(resource_prop_node); // reload indices
+                    var insert_at = resource_prop_indices[previous_item].endIndex + 1;
+                    
                     resource_prop_node.items.splice(insert_at, 0, ...slice);
         
                     // reload indices
                     resource_prop_indices = this._getTopLevelIncides(resource_prop_node);
-                    /*this._debugLog("New resource_prop_indices:");
-                    this._debugLog(resource_prop_indices);
-
-                    this._debugLog("New resource_prop_node.items:");
-                    this._debugLog(resource_prop_node.items);*/
-        
-                    // set new location of current index
-                    current_index = resource_prop_indices[desired_order_item];
-                    //this._debugLog("Updated Current Index: " + current_index);
                 }
         
-                previous_index = current_index;
+                previous_item = desired_order_item;
             }
     
             this._resetParser();
@@ -391,7 +370,7 @@ class TemplateTransformer {
         if (Object.keys(l1_indices).includes("AWSTemplateFormatVersion")) {
             return;
         }
-        var insert_at_index = Object.values(l1_indices)[0];
+        var insert_at_index = Object.values(l1_indices)[0].startIndex;
         var insert_at_offset = this.primary_map.items[insert_at_index].range.start;
     
         this.primary_map.value = this.template.slice(this.primary_map.range.start, insert_at_offset) +
