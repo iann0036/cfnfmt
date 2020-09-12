@@ -92,7 +92,7 @@ If set to `true`, the template is checked for the presence of the `AWSTemplateFo
 
 #### key-indent-level
 
-An integer representing the number of spaces to indent map/object keys at, relative to its parent key. Set to `false` to ignore key indenting.
+An integer representing the number of spaces to indent map/object keys at, relative to its parent key. Lists/sequences are not affected by this setting. Set to `false` to ignore key indenting.
 
 #### section-order
 
