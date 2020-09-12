@@ -124,6 +124,18 @@ class TemplateTransformer {
         } else if (has_nonascii) {
             console.log(`WARNING: The file '${filename}' had non-ascii characters which were removed before processing!`);
         }
+
+        this._fixCollectionsBug();
+    }
+
+    _fixCollectionsBug() {
+        // remove blank lines immediately before MAP_VALUEs
+        for (var i=1; i<this.primary_map.items.length; i++) {
+            if (this.primary_map.items[i].type == "MAP_VALUE" && this.primary_map.items[i - 1].type == "BLANK_LINE") {
+                this.primary_map.items.splice(i-1, 1);
+                i--;
+            }
+        }
     }
 
     processConfig() {
@@ -166,6 +178,8 @@ class TemplateTransformer {
                 this.primary_map_index = i;
             }
         }
+
+        this._fixCollectionsBug();
     }
 
     _getTopLevelIncides(node) {
@@ -208,37 +222,22 @@ class TemplateTransformer {
             }
         }
 
-        var previous_item = section_order.shift();
+        var overrideStartStr = this.primary_map.context.src.slice(this.primary_map.range.start, this.primary_map.items[0].range.start);
+
+        var previous_item = section_order.pop();
     
         while (section_order.length) {
-            var desired_order_item = section_order.shift();
-    
-            this._debugLog("Desired Order Item:");
-            this._debugLog(desired_order_item);
-            
-            this._debugLog("Current Index:");
-            this._debugLog(l1_indices[desired_order_item]);
+            var desired_order_item = section_order.pop();
 
-            this._debugLog("Previous Index:");
-            this._debugLog(l1_indices[previous_item]);
-            
-            if (l1_indices[desired_order_item].startIndex != l1_indices[previous_item].endIndex + 1) { // Skip if already in order
-                var slice = this.primary_map.items.splice(l1_indices[desired_order_item].startIndex, l1_indices[desired_order_item].endIndex - l1_indices[desired_order_item].startIndex + 1);
-                l1_indices = this._getTopLevelIncides(this.primary_map); // reload indices
+            this._sendCollectionItemRangeToStart(this.primary_map, l1_indices[desired_order_item].startIndex, l1_indices[desired_order_item].keyIndex, l1_indices[desired_order_item].endIndex);
 
-                var insert_at = l1_indices[previous_item].endIndex + 1;
-
-                this.primary_map.items.splice(insert_at, 0, ...slice);
-    
-                // reload indices
-                l1_indices = this._getTopLevelIncides(this.primary_map);
-                this._debugLog(l1_indices);
-            } else {
-                this._debugLog("Skipping, already in order");
-            }
+            // reload indices
+            l1_indices = this._getTopLevelIncides(this.primary_map);
     
             previous_item = desired_order_item;
         }
+
+        this.primary_map.overrideStartStr = overrideStartStr;
     
         //this.cst[this.cst.length-1].contents = [...this.cst[this.cst.length-1].contents, ...this.cst[this.cst.length-1].contents[this.primary_map_index].items]; // flatten collection
         //delete this.cst[this.cst.length-1].contents[this.primary_map_index];
@@ -272,27 +271,33 @@ class TemplateTransformer {
                 }
             }
 
-            var previous_item = resource_key_order.shift();
+            var overrideStartStr = resource_prop_node.context.src.slice(resource_prop_node.range.start, resource_prop_node.items[0].range.start);
+
+            var previous_item = resource_key_order.pop();
         
             while (resource_key_order.length) {
-                var desired_order_item = resource_key_order.shift();
-                
-                if (resource_prop_indices[desired_order_item].startIndex != resource_prop_indices[previous_item].endIndex + 1) { // Skip if already in order
-                    var slice = resource_prop_node.items.splice(resource_prop_indices[desired_order_item].startIndex, resource_prop_indices[desired_order_item].endIndex - resource_prop_indices[desired_order_item].startIndex + 1);
-                    resource_prop_indices = this._getTopLevelIncides(resource_prop_node); // reload indices
-                    var insert_at = resource_prop_indices[previous_item].endIndex + 1;
-                    
-                    resource_prop_node.items.splice(insert_at, 0, ...slice);
-        
-                    // reload indices
-                    resource_prop_indices = this._getTopLevelIncides(resource_prop_node);
-                }
+                var desired_order_item = resource_key_order.pop();
+
+                this._sendCollectionItemRangeToStart(resource_prop_node, resource_prop_indices[desired_order_item].startIndex, resource_prop_indices[desired_order_item].keyIndex, resource_prop_indices[desired_order_item].endIndex);
+    
+                // reload indices
+                resource_prop_indices = this._getTopLevelIncides(resource_prop_node);
         
                 previous_item = desired_order_item;
             }
-    
-            this._resetParser();
+
+            resource_prop_node.overrideStartStr = overrideStartStr
         }
+    
+        this._resetParser();
+    }
+
+    _sendCollectionItemRangeToStart(collection, startIndex, keyIndex, endIndex) {
+        var indent = collection.items[keyIndex].context.indent;
+        var slicedItems = collection.items.splice(startIndex, endIndex - startIndex + 1);
+
+        collection.items[0].context.indent = Math.max(indent, collection.items[0].context.indent);
+        collection.items = slicedItems.concat(collection.items);
     }
 
     _walkNode(node, parent, parent_item_index) {

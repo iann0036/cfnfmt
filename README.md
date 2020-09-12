@@ -2,7 +2,7 @@
 
 > :construction: WORK IN PROGRESS
 
-cfnfmt is an AWS CloudFormation template style formatter. It identifies and corrects things like line spacing, key ordering and other items which could be considered personal preference.
+cfnfmt is an AWS CloudFormation template style formatter. It identifies and corrects things like line spacing, key ordering and other items which could be considered personal preference whilst preserving comments.
 
 It does not check or determine the validity of resource property syntax, for that you should use [cfn-lint](https://github.com/aws-cloudformation/cfn-python-lint).
 
@@ -91,7 +91,7 @@ The following settings can be set in the `rules` section of the configuration fi
 
 If set to `true`, the template is checked for the presence of the `AWSTemplateFormatVersion` key. If not found, the key will be added with the `2010-09-09` value.
 
-#### key-indent-level
+#### key-indent-level [CURRENTLY DISABLED - UNSTABLE]
 
 An integer representing the number of spaces to indent map/object keys at, relative to its parent key. Lists/sequences are not affected by this setting. Set to `false` to ignore key indenting.
 
@@ -103,6 +103,6 @@ An integer representing the number of spaces to indent list/sequence items at, r
 
 A list of sections in the order it should be rearranged to. Not all defined sections have to be defined in the template. Any sections not defined by this list will retain their existing order. Set to `false` to retain existing order.
 
-#### resource-key-order [CURRENTLY DISABLED - UNSTABLE]
+#### resource-key-order
 
 A list of keys in the order they should be rearranged to within resources. Not all defined keys have to be defined in the resource. Any keys not defined by this list will retain their existing order. Set to `false` to retain existing order.
