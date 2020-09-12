@@ -13,7 +13,6 @@ class ConfigLoader {
         "rules": {
             "aws-template-format-version": true,
             "key-indent-level": 2,
-            "list-indent-level": 0,
             "section-order": [
                 "AWSTemplateFormatVersion",
                 "Description",
@@ -77,10 +76,6 @@ class ConfigLoader {
 
     get keyIndentLevel() {
         return this.config.rules["key-indent-level"];
-    }
-
-    get listIndentLevel() {
-        return this.config.rules["list-indent-level"];
     }
 
     get sectionOrder() {
@@ -151,7 +146,7 @@ class TemplateTransformer {
         if (this.config.resourceKeyOrder) {
             this.setResourceKeyOrder();
         }
-        if (Number.isInteger(this.config.keyIndentLevel) || Number.isInteger(this.config.listIndentLevel)) {
+        if (Number.isInteger(this.config.keyIndentLevel)) {
             this.setIndentLevel();
         }
     }
@@ -306,40 +301,16 @@ class TemplateTransformer {
                 if (node.items[i].context) {
                     if (!isNaN(this.config.keyIndentLevel) && node.items[i].context.indent /* has an indent */ && node.items[i].type == "MAP_VALUE" && node.items[i-1].type == "PLAIN" && parent /* isn't top level */ && (node.items[i].context.indent - parent.items[parent_item_index].context.indent) != this.config.keyIndentLevel && parent.items[parent_item_index].type == "MAP_VALUE") {
                         var calculated_indentation = node.items[i].context.indent - parent.items[parent_item_index].context.indent;
-    
-                        /*this._debugLog("Actual indent: " + node.items[i].context.indent);
-                        this._debugLog("Parent indent: " + parent.items[parent_item_index].context.indent);
-                        this._debugLog("Parent type: " + parent.items[parent_item_index].type);
-                        this._debugLog("Key: '" + node.items[i-1].rawValue + "'");
-                        this._debugLog("Calculated indent: " + calculated_indentation);*/
 
                         var parent_raw_value = this.template.slice(parent.items[parent_item_index].range.start, parent.items[parent_item_index].range.end); // include \n
-                        //parent_raw_value = parent.items[parent_item_index].rawValue;
                         
                         if (calculated_indentation > this.config.keyIndentLevel) {
                             parent.items[parent_item_index].value = parent_raw_value.replace(new RegExp('\\n {' + (calculated_indentation - this.config.keyIndentLevel) + '}', 'g'), `\n`);
                         } else {
                             parent.items[parent_item_index].value = parent_raw_value.replace(/\n/g, `\n` + ' '.repeat(this.config.keyIndentLevel - calculated_indentation));
                         }
-    
-                        /*this._debugLog("Updated Value:");
-                        this._debugLog(parent.items[parent_item_index].value);
-                        this._debugLog("******");*/
-                        return true;
-                    } else if (!isNaN(this.config.listIndentLevel) && node.items[i].type == "SEQ_ITEM" && parent /* isn't top level */) {
-                        var calculated_indentation = parent.items[parent_item_index].context.indent + this.config.listIndentLevel;
-                        if (!parent.items[parent_item_index].context.indent) { continue; }
-                        var parent_raw_value = this.template.slice(parent.items[parent_item_index].range.start, parent.items[parent_item_index].range.end); // include \n
-                        //parent_raw_value = parent.items[parent_item_index].rawValue;
-
-                        var match_pattern = parent_raw_value.match(new RegExp('\\n( *)-'))[0];
-                        var replaced_value = parent_raw_value.replace(new RegExp(match_pattern, 'g'), `\n` + ' '.repeat(calculated_indentation) + '-');
                         
-                        if (replaced_value != parent_raw_value) {
-                            parent.items[parent_item_index].value = replaced_value;
-                            
-                            return true;
-                        }
+                        return true;
                     }
                 }
                 
