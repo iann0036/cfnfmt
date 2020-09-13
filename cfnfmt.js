@@ -158,6 +158,8 @@ class TemplateTransformer {
     }
 
     _resetParser() {
+        var previous_template = this.template;
+
         this.template = String(this.cst);
     
         this.cst = parseCST(this.template);
@@ -175,6 +177,8 @@ class TemplateTransformer {
         }
 
         this._fixCollectionsBug();
+
+        return (previous_template != this.template);
     }
 
     _getTopLevelIncides(node) {
@@ -306,11 +310,11 @@ class TemplateTransformer {
                         
                         if (calculated_indentation > this.config.keyIndentLevel) {
                             parent.items[parent_item_index].value = parent_raw_value.replace(new RegExp('\\n {' + (calculated_indentation - this.config.keyIndentLevel) + '}', 'g'), `\n`);
-                        } else {
-                            parent.items[parent_item_index].value = parent_raw_value.replace(/\n/g, `\n` + ' '.repeat(this.config.keyIndentLevel - calculated_indentation));
+                            return true;
+                        } else if (calculated_indentation < this.config.keyIndentLevel) {
+                            parent.items[parent_item_index].value = parent_raw_value.replace(/\n( +\S)/g, `\n` + ' '.repeat(this.config.keyIndentLevel - calculated_indentation) + "$1");
+                            return true;
                         }
-                        
-                        return true;
                     }
                 }
                 
