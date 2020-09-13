@@ -74,6 +74,7 @@ rules:
   - "Type"
   - "Metadata"
   - "Properties"
+  new-lines-at-end-of-file: 1
 ```
 
 When specifying configuration with the `-c` option, the default configuration values are used for any values not explicitly defined.
