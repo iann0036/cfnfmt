@@ -34,7 +34,8 @@ class ConfigLoader {
                 "Type",
                 "Metadata",
                 "Properties"
-            ]
+            ],
+            "new-lines-at-end-of-file": 1
         }
     };
 
@@ -84,6 +85,10 @@ class ConfigLoader {
 
     get resourceKeyOrder() {
         return this.config.rules["resource-key-order"];
+    }
+
+    get newLinesAtEndOfFile() {
+        return this.config.rules["new-lines-at-end-of-file"];
     }
 }
 
@@ -149,6 +154,16 @@ class TemplateTransformer {
         if (Number.isInteger(this.config.keyIndentLevel)) {
             this.setIndentLevel();
         }
+    }
+
+    postProcess(template_string) {
+        this.template = template_string;
+
+        if (Number.isInteger(this.config.newLinesAtEndOfFile)) {
+            this.setTrailingNewlines(this.config.newLinesAtEndOfFile);
+        }
+
+        return this.template;
     }
 
     _debugLog() {
@@ -303,7 +318,7 @@ class TemplateTransformer {
         if (node && node.items) {
             for (var i=0; i<node.items.length; i++) {
                 if (node.items[i].context) {
-                    if (!isNaN(this.config.keyIndentLevel) && node.items[i].context.indent /* has an indent */ && node.items[i].type == "MAP_VALUE" && node.items[i-1].type == "PLAIN" && parent /* isn't top level */ && (node.items[i].context.indent - parent.items[parent_item_index].context.indent) != this.config.keyIndentLevel && parent.items[parent_item_index].type == "MAP_VALUE") {
+                    if (Number.isInteger(this.config.keyIndentLevel) && node.items[i].context.indent /* has an indent */ && node.items[i].type == "MAP_VALUE" && node.items[i-1].type == "PLAIN" && parent /* isn't top level */ && (node.items[i].context.indent - parent.items[parent_item_index].context.indent) != this.config.keyIndentLevel && parent.items[parent_item_index].type == "MAP_VALUE") {
                         var calculated_indentation = node.items[i].context.indent - parent.items[parent_item_index].context.indent;
 
                         var parent_raw_value = this.template.slice(parent.items[parent_item_index].range.start, parent.items[parent_item_index].range.end); // include \n
@@ -316,7 +331,7 @@ class TemplateTransformer {
                             return true;
                         }
                     }
-                }
+                } // TODO: Set all values on same tree level before returning
                 
                 if (this._walkNode(node.items[i].node, node, i)) {
                     return true;
@@ -360,11 +375,16 @@ class TemplateTransformer {
         this._resetParser();
     }
 
+    setTrailingNewlines(count) {
+        this.template = this.template.trimEnd();
+        this.template += `\n`.repeat(count);
+    }
+
     outputToStdout() {
         if (this.disallowProcessing) {
             return
         }
-        var output = String(this.cst);
+        var output = this.postProcess(String(this.cst));
         console.log(output);
     }
 
@@ -372,7 +392,7 @@ class TemplateTransformer {
         if (this.disallowProcessing) {
             return
         }
-        var output = String(this.cst);
+        var output = this.postProcess(String(this.cst));
         fs.writeFileSync(this.filename, output);
     }
 }

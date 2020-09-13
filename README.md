@@ -101,3 +101,7 @@ A list of sections in the order it should be rearranged to. Not all defined sect
 #### resource-key-order
 
 A list of keys in the order they should be rearranged to within resources. Not all defined keys have to be defined in the resource. Any keys not defined by this list will retain their existing order. Set to `false` to retain existing order.
+
+#### new-lines-at-end-of-file
+
+An integer representing the desired number of newlines at the end of the file (usually set to `0` or `1`). Defaults to `1`.

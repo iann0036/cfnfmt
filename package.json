@@ -24,7 +24,7 @@
   "dependencies": {
     "commander": "^6.0.0",
     "glob": "^7.1.6",
-    "yaml": "^1.10.0"
+    "yaml": "git+https://github.com/iann0036/yaml.git"
   },
   "bin": "./index.js"
 }
