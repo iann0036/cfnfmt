@@ -1,6 +1,6 @@
 const fs = require('fs');
 const YAML = require('yaml');
-const parseCST = require('yaml/parse-cst');
+const Parser = require('yaml/parse-cst').Parser;
 const glob = require('glob');
 
 class ConfigLoader {
@@ -103,43 +103,19 @@ class TemplateTransformer {
         this.file_contents = this.file_contents.replace(/[^\x00-\x7F]/g, "");
 
         this.template = this.file_contents;
-        this.cst = parseCST(this.template);
-        this.cst.setOrigRanges();
-
-        this.doc = this.cst[this.cst.length-1];
-
-        this.primary_map = null;
-        this.primary_map_index = 0;
-        for (var i=0; i<this.doc.contents.length; i++) {
-            if (this.doc.contents[i].type == "MAP") {
-                this.primary_map = this.doc.contents[i];
-                this.primary_map_index = i;
+        
+        var parser = new Parser(
+            t => {
+                if (t.type == "document") {
+                    this.doc = t;
+                }
             }
-        }
-
-        this.disallowProcessing = false;
-        this._debugLog(this._getTopLevelIncides(this.primary_map));
-        if (!Object.keys(this._getTopLevelIncides(this.primary_map)).includes("Resources")) {
-            this.disallowProcessing = true;
-        } else if (has_nonascii) {
-            console.log(`WARNING: The file '${filename}' had non-ascii characters which were removed before processing!`);
-        }
-
-        this._fixCollectionsBug();
-    }
-
-    _fixCollectionsBug() {
-        // remove blank lines immediately before MAP_VALUEs
-        for (var i=1; i<this.primary_map.items.length; i++) {
-            if (this.primary_map.items[i].type == "MAP_VALUE" && this.primary_map.items[i - 1].type == "BLANK_LINE") {
-                this.primary_map.items.splice(i-1, 1);
-                i--;
-            }
-        }
+        );
+        parser.parse(this.template);
     }
 
     processConfig() {
-        if (this.disallowProcessing) {
+        if (this.disallowProcessing || !this.doc) {
             return
         }
         if (this.config.awsTemplateFormatVersion) {
@@ -151,13 +127,15 @@ class TemplateTransformer {
         if (this.config.resourceKeyOrder) {
             this.setResourceKeyOrder();
         }
+        /*
         if (Number.isInteger(this.config.keyIndentLevel)) {
             this.setIndentLevel();
         }
+        */
     }
 
-    postProcess(template_string) {
-        this.template = template_string;
+    postProcess(doc) {
+        this.template = this._stringifyItem(doc);
 
         if (Number.isInteger(this.config.newLinesAtEndOfFile)) {
             this.setTrailingNewlines(this.config.newLinesAtEndOfFile);
@@ -166,67 +144,81 @@ class TemplateTransformer {
         return this.template;
     }
 
+    _addSourceToStr(item, property) {
+        if (!item[property]) {
+            return "";
+        }
+
+        if (!Array.isArray(item[property])) {
+            item[property] = [ item[property] ];
+        }
+
+        var ret = "";
+
+        for (var el of item[property]) {
+            ret += el.source;
+        }
+        
+        return ret;
+    }
+
+    _stringifyItem(item) {
+        var ret = "";
+
+        ret += this._addSourceToStr(item, 'start');
+        ret += this._addSourceToStr(item, 'key');
+        ret += this._addSourceToStr(item, 'sep');
+        if (item.value) {
+            if (!Array.isArray(item.value)) {
+                item.value = [ item.value ];
+            }
+            for (var value of item.value) {
+                ret += this._stringifyItem(value);
+            }
+        }
+        if (item.source) {
+            if (item.props) {
+                for (var prop of item.props) {
+                    ret += prop.source;
+                }
+            }
+            ret += item.source;
+        }
+        if (item.items) {
+            for (var subitem of item.items) {
+                ret += this._stringifyItem(subitem);
+            }
+        }
+        ret += this._addSourceToStr(item, 'end');
+
+        return ret;
+    }
+
     _debugLog() {
         if (this.debug) {
             console.log.apply(console, arguments);
         }
     }
 
-    _resetParser() {
-        var previous_template = this.template;
-
-        this.template = String(this.cst);
-    
-        this.cst = parseCST(this.template);
-        this.cst.setOrigRanges();
+    _getTopLevelIncides(token) {
+        var keys = {};
         
-        this.doc = this.cst[this.cst.length-1];
-        
-        this.primary_map = null;
-        this.primary_map_index = 0;
-        for (var i=0; i<this.doc.contents.length; i++) {
-            if (this.doc.contents[i].type == "MAP") {
-                this.primary_map = this.doc.contents[i];
-                this.primary_map_index = i;
+        for (var i=0; i<token.value.items.length; i++) {
+            if (token.value.items[i].key && token.value.items[i].key.source) {
+                keys[token.value.items[i].key.source] = i;
             }
         }
 
-        this._fixCollectionsBug();
-
-        return (previous_template != this.template);
-    }
-
-    _getTopLevelIncides(node) {
-        var l1_indices = {};
-        var next_available_start = 0;
-
-        for (var i=0; i<node.items.length; i++) {
-            if (typeof node.items[i].rawValue == "string" && node.items[i].type == "PLAIN") {
-                for (var j=i+1; j<node.items.length; j++) {
-                    if (node.items[j] && node.items[j].type == "MAP_VALUE") {
-                        l1_indices[node.items[i].rawValue.trim()] = {
-                            "startIndex": next_available_start,
-                            "keyIndex": i,
-                            "endIndex": j
-                        };
-                        next_available_start = j+1;
-                        break;
-                    }
-                    if (node.items[j] && !["COMMENT", "BLANK_LINE"].includes(node.items[j].type)) {
-                        break;
-                    }
-                }
-            }
-        }
-        return l1_indices;
+        return keys;
     }
 
     setSectionOrder() {
         if (this.disallowProcessing) {
             return
         }
-        var l1_indices = this._getTopLevelIncides(this.primary_map);
+        var l1_indices = this._getTopLevelIncides(this.doc);
         var l1_keys = Object.keys(l1_indices);
+
         var section_order = this.config.sectionOrder.slice(); // make a copy
     
         for (var i=0; i<section_order.length; i++) { // remove not-found keys from this.config.sectionOrder
@@ -236,143 +228,83 @@ class TemplateTransformer {
             }
         }
 
-        var overrideStartStr = this.primary_map.context.src.slice(this.primary_map.range.start, this.primary_map.items[0].range.start);
+        this.doc.value.items.sort((a, b) => {
+            if (a.key && a.key.source && section_order.indexOf(a.key.source) > -1 && b.key && b.key.source && section_order.indexOf(b.key.source) > -1) {
+                return section_order.indexOf(a.key.source) - section_order.indexOf(b.key.source);
+            }
 
-        var previous_item = section_order.pop();
-    
-        while (section_order.length) {
-            var desired_order_item = section_order.pop();
-
-            this._sendCollectionItemRangeToStart(this.primary_map, l1_indices[desired_order_item].startIndex, l1_indices[desired_order_item].keyIndex, l1_indices[desired_order_item].endIndex);
-
-            // reload indices
-            l1_indices = this._getTopLevelIncides(this.primary_map);
-    
-            previous_item = desired_order_item;
-        }
-
-        this.primary_map.overrideStartStr = overrideStartStr;
-    
-        //this.cst[this.cst.length-1].contents = [...this.cst[this.cst.length-1].contents, ...this.cst[this.cst.length-1].contents[this.primary_map_index].items]; // flatten collection
-        //delete this.cst[this.cst.length-1].contents[this.primary_map_index];
-    
-        this._resetParser();
+            return 0;
+        });
     }
 
     setResourceKeyOrder() {
         if (this.disallowProcessing) {
             return
         }
-        var l1_indices = this._getTopLevelIncides(this.primary_map);
-        if (!Object.keys(l1_indices).includes("Resources")) {
+        var l1_indices = this._getTopLevelIncides(this.doc);
+        var l1_keys = Object.keys(l1_indices);
+
+        if (!l1_keys.includes("Resources")) {
             return;
         }
 
-        var resources_node = this.primary_map.items[l1_indices['Resources'].endIndex].node;
-        var resource_indices = this._getTopLevelIncides(resources_node);
-
-        for (var resource of Object.keys(resource_indices)) {
-            var resource_prop_node = resources_node.items[resource_indices[resource].endIndex].node;
-            var resource_prop_indices = this._getTopLevelIncides(resource_prop_node);
-            var resource_prop_keys = Object.keys(resource_prop_indices);
+        for (var j=0; j<this.doc.value.items[l1_indices["Resources"]].value.items.length; j++) {
+            var resource_obj = this.doc.value.items[l1_indices["Resources"]].value.items[j];
+            var resource_indices = this._getTopLevelIncides(resource_obj);
+            var resource_keys = Object.keys(resource_indices);
 
             var resource_key_order = this.config.resourceKeyOrder.slice(); // make a copy
         
-            for (var i=0; i<resource_key_order.length; i++) { // remove not-found keys from this.config.sectionOrder
-                if (!resource_prop_keys.includes(resource_key_order[i])) {
+            for (var i=0; i<resource_key_order.length; i++) { // remove not-found keys from this.config.resourceKeyOrder
+                if (!resource_keys.includes(resource_key_order[i])) {
                     resource_key_order.splice(i, 1);
                     i -= 1;
                 }
             }
 
-            var overrideStartStr = resource_prop_node.context.src.slice(resource_prop_node.range.start, resource_prop_node.items[0].range.start);
-
-            var previous_item = resource_key_order.pop();
-        
-            while (resource_key_order.length) {
-                var desired_order_item = resource_key_order.pop();
-
-                this._sendCollectionItemRangeToStart(resource_prop_node, resource_prop_indices[desired_order_item].startIndex, resource_prop_indices[desired_order_item].keyIndex, resource_prop_indices[desired_order_item].endIndex);
-    
-                // reload indices
-                resource_prop_indices = this._getTopLevelIncides(resource_prop_node);
-        
-                previous_item = desired_order_item;
-            }
-
-            resource_prop_node.overrideStartStr = overrideStartStr
-        }
-    
-        this._resetParser();
-    }
-
-    _sendCollectionItemRangeToStart(collection, startIndex, keyIndex, endIndex) {
-        var indent = collection.items[keyIndex].context.indent;
-        var slicedItems = collection.items.splice(startIndex, endIndex - startIndex + 1);
-
-        collection.items[0].context.indent = Math.max(indent, collection.items[0].context.indent);
-        collection.items = slicedItems.concat(collection.items);
-    }
-
-    _walkNode(node, parent, parent_item_index) {
-        if (node && node.items) {
-            for (var i=0; i<node.items.length; i++) {
-                if (node.items[i].context) {
-                    if (Number.isInteger(this.config.keyIndentLevel) && node.items[i].context.indent /* has an indent */ && node.items[i].type == "MAP_VALUE" && node.items[i-1].type == "PLAIN" && parent /* isn't top level */ && (node.items[i].context.indent - parent.items[parent_item_index].context.indent) != this.config.keyIndentLevel && parent.items[parent_item_index].type == "MAP_VALUE") {
-                        var calculated_indentation = node.items[i].context.indent - parent.items[parent_item_index].context.indent;
-
-                        var parent_raw_value = this.template.slice(parent.items[parent_item_index].range.start, parent.items[parent_item_index].range.end); // include \n
-                        
-                        if (calculated_indentation > this.config.keyIndentLevel) {
-                            parent.items[parent_item_index].value = parent_raw_value.replace(new RegExp('\\n {' + (calculated_indentation - this.config.keyIndentLevel) + '}', 'g'), `\n`);
-                            return true;
-                        } else if (calculated_indentation < this.config.keyIndentLevel) {
-                            parent.items[parent_item_index].value = parent_raw_value.replace(/\n( +\S)/g, `\n` + ' '.repeat(this.config.keyIndentLevel - calculated_indentation) + "$1");
-                            return true;
-                        }
-                    }
-                } // TODO: Set all values on same tree level before returning
-                
-                if (this._walkNode(node.items[i].node, node, i)) {
-                    return true;
+            this.doc.value.items[l1_indices["Resources"]].value.items[j].value.items.sort((a, b) => {
+                if (a.key && a.key.source && resource_key_order.indexOf(a.key.source) > -1 && b.key && b.key.source && resource_key_order.indexOf(b.key.source) > -1) {
+                    return resource_key_order.indexOf(a.key.source) - resource_key_order.indexOf(b.key.source);
                 }
-            }
-        }
-    
-        return false;
-    }
 
-    setIndentLevel() {
-        if (this.disallowProcessing) {
-            return
+                return 0;
+            });
         }
-        var spacing_iterations = 0; // safety
-        while (this._walkNode(this.primary_map, null, -1) && spacing_iterations < 1000) {
-            this._resetParser(); // TODO: more elegant way of applying pending changes
-            spacing_iterations += 1;
-        }
-        if (spacing_iterations >= 1000) {
-            console.log("ERROR: detected infinite indentation loop");
-        }
-        this._debugLog("Spacing iterations: " + spacing_iterations);
     }
 
     ensureAWSTemplateFormatVersionPresent() {
         if (this.disallowProcessing) {
             return
         }
-        var l1_indices = this._getTopLevelIncides(this.primary_map);
+
+        var l1_indices = this._getTopLevelIncides(this.doc);
         if (Object.keys(l1_indices).includes("AWSTemplateFormatVersion")) {
             return;
         }
-        var insert_at_index = Object.values(l1_indices)[0].startIndex;
-        var insert_at_offset = this.primary_map.items[insert_at_index].range.start;
-    
-        this.primary_map.value = this.template.slice(this.primary_map.range.start, insert_at_offset) +
-            `AWSTemplateFormatVersion: "2010-09-09"\n` +
-            this.template.slice(insert_at_offset, this.primary_map.range.end);
         
-        this._resetParser();
+        var insert_pos = 0;
+        this.doc.value.items.splice(insert_pos, 0, {
+            start: [],
+            key: {
+                type: 'scalar',
+                offset: 0,
+                indent: 0,
+                source: 'AWSTemplateFormatVersion'
+            },
+            sep: [
+                { type: 'map-value-ind', indent: 0, source: ':' },
+                { type: 'space', indent: 0, source: ' ' }
+            ],
+            value: {
+                type: 'single-quoted-scalar',
+                offset: 'AWSTemplateFormatVersion'.length + 2,
+                indent: 0,
+                source: "'2010-09-09'",
+                end: [
+                    { type: 'newline', indent: 0, source: '\n' }
+                ]
+            }
+        });
     }
 
     setTrailingNewlines(count) {
@@ -384,7 +316,7 @@ class TemplateTransformer {
         if (this.disallowProcessing) {
             return
         }
-        var output = this.postProcess(String(this.cst));
+        var output = this.postProcess(this.doc);
         console.log(output);
     }
 
@@ -392,7 +324,7 @@ class TemplateTransformer {
         if (this.disallowProcessing) {
             return
         }
-        var output = this.postProcess(String(this.cst));
+        var output = this.postProcess(this.doc);
         fs.writeFileSync(this.filename, output);
     }
 }
@@ -408,10 +340,10 @@ module.exports = (args) => {
             process_files.push(pathitem);
         } else if (stat.isDirectory()) {
             for (var templateFilenameFilter of config.templateFilenames) {
-                process_files = process_files.concat(glob.sync(templateFilenameFilter, { cwd: pathitem }));
+                process_files = process_files.concat(glob.sync(templateFilenameFilter, { cwd: pathitem, absolute: true }));
             }
         } else {
-            throw "Cannot handle filetype";
+            throw new Error("Cannot handle filetype");
         }
     }
 
