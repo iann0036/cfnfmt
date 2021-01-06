@@ -118,6 +118,9 @@ class TemplateTransformer {
         if (this.disallowProcessing || !this.doc) {
             return
         }
+
+        this.doc.value.items = this._normalizeItems(this.doc.value.items);
+
         if (this.config.awsTemplateFormatVersion) {
             this.ensureAWSTemplateFormatVersionPresent();
         }
@@ -127,10 +130,13 @@ class TemplateTransformer {
         if (this.config.resourceKeyOrder) {
             this.setResourceKeyOrder();
         }
-        /*
         if (Number.isInteger(this.config.keyIndentLevel)) {
             this.setIndentLevel();
         }
+
+        /*
+        const util = require('util');
+        console.log(util.inspect(this.doc, false, null, true));
         */
     }
 
@@ -235,6 +241,58 @@ class TemplateTransformer {
 
             return 0;
         });
+    }
+
+    _normalizeItems(items) {
+        for (var i=0; i<items.length; i++) {
+            if (items[i].value && items[i].value.items && items[i].value.items.length && items[i].sep) {
+                var septypes = items[i].sep.map(x => x.type);
+                if (septypes[septypes.length - 2] == "newline" && septypes[septypes.length - 1] == "space") {
+                    var sepspace = items[i].sep.pop();
+                    items[i].value.items[0].start.unshift(sepspace);
+                }
+            }
+        }
+
+        for (var i=0; i<items.length - 1; i++) {
+            if (items[i].value && items[i].value.items) {
+                var lastitemkeys = Object.keys(items[i].value.items[items[i].value.items.length - 1]);
+                if (lastitemkeys.length == 1 && lastitemkeys[0] == "start") {
+                    var lastitem = items[i].value.items.pop();
+                    items[i + 1].start = lastitem.start.concat(items[i + 1].start); // move the start to next root
+                }
+            }
+        }
+
+        for (var i=0; i<items.length; i++) { // recurse
+            if (items[i].value && items[i].value.items) {
+                items[i].value.items = this._normalizeItems(items[i].value.items);
+            }
+        }
+
+        return items;
+    }
+
+    _setIndentItems(items, level) {
+        for (var i=0; i<items.length; i++) { // recurse
+            if (items[i].start && items[i].start.length && items[i].start[0].type == "space") {
+                items[i].start[0].source = " ".repeat(level * this.config.keyIndentLevel);
+            }
+
+            if (items[i].value && items[i].value.items) {
+                items[i].value.items = this._setIndentItems(items[i].value.items, level + 1);
+            }
+        }
+
+        return items;
+    }
+
+    setIndentLevel() {
+        if (this.disallowProcessing) {
+            return
+        }
+
+        this.doc.value.items = this._setIndentItems(this.doc.value.items, 0);
     }
 
     setResourceKeyOrder() {

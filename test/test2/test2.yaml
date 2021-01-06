@@ -1,0 +1,21 @@
+
+Parameters:
+  c: d
+
+Resources:
+  res: # 1 comment
+    Properties:
+      x: !Sub | #2comment
+        Abc ${AWS::AccountId}
+        DEF
+        ghi
+
+      y: "why"
+      z: 'z' # 3 comment
+      a: [ { a: !Ref AWS::Region }]
+    Type: "TheType"
+
+# top level comment 1
+# top level comment 2
+Metadata:
+  a: b
