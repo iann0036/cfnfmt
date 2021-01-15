@@ -275,6 +275,21 @@ class TemplateTransformer {
 
     _setIndentItems(items, level) {
         for (var i=0; i<items.length; i++) { // recurse
+            if (items[i].value && items[i].value.type == "block-scalar") { // need to re-indent the block
+                console.log(items[i]);
+                var indent = items[i].value.indent;
+                var source = items[i].value.source;
+                var re_wi = new RegExp(`\\s{${indent}}`, "g");
+                var re_win = new RegExp(`\\n\\s{${indent}}`, "g");
+
+                if (source.substr(0, indent).match(re_wi)) { // does the source start with whitespace?
+                    source = " ".repeat(level * this.config.keyIndentLevel) + source.substr(indent); // replace first line whitespace
+                    source = source.replace(re_win, "\n" + " ".repeat(level * this.config.keyIndentLevel)); // replace subsequent line whitespace
+                }
+
+                items[i].value.source = source;
+            }
+
             if (items[i].start && items[i].start.length && items[i].start[0].type == "space") {
                 items[i].start[0].source = " ".repeat(level * this.config.keyIndentLevel);
             }
